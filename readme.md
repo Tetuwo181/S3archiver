@@ -19,5 +19,4 @@
 
 ```
  go run main.go -bucket {バケット名}　-local {アーカイブ対象ディレクトリ} 
-
 ```
