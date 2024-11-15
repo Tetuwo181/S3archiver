@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
 // S3Uploader manages S3 operations
@@ -24,6 +25,29 @@ type S3Uploader struct {
 // ArchivedFiles represents the structure of archived files in JSON
 type ArchivedFiles struct {
 	Files []string `json:"files"`
+}
+
+func parseStorageClass(class string) (types.StorageClass, error) {
+	switch strings.ToUpper(class) {
+	case "STANDARD":
+		return types.StorageClassStandard, nil
+	case "REDUCED_REDUNDANCY":
+		return types.StorageClassReducedRedundancy, nil
+	case "STANDARD_IA":
+		return types.StorageClassStandardIa, nil
+	case "ONEZONE_IA":
+		return types.StorageClassOnezoneIa, nil
+	case "INTELLIGENT_TIERING":
+		return types.StorageClassIntelligentTiering, nil
+	case "GLACIER":
+		return types.StorageClassGlacier, nil
+	case "DEEP_ARCHIVE":
+		return types.StorageClassDeepArchive, nil
+	case "GLACIER_IR":
+		return types.StorageClassGlacierIr, nil
+	default:
+		return "", fmt.Errorf("invalid storage class: %s", class)
+	}
 }
 
 // LoadArchivedFiles loads archived files from the JSON file
@@ -69,22 +93,29 @@ func (u *S3Uploader) ListS3Files(bucket string) ([]string, error) {
 }
 
 // UploadFile uploads a file to S3
-func (u *S3Uploader) UploadFile(localPath, s3Key string, bucket string) error {
+func (u *S3Uploader) UploadFile(localPath, s3Key string, bucket string, storageClass string) error {
 	file, err := os.Open(localPath)
 	if err != nil {
 		return fmt.Errorf("failed to open file %s: %w", localPath, err)
 	}
 	defer file.Close()
 
+	// Convert string to StorageClass type
+	s3StorageClass, err := parseStorageClass(storageClass)
+	if err != nil {
+		return fmt.Errorf("invalid storage class %s: %w", storageClass, err)
+	}
+
 	_, err = u.Client.PutObject(context.TODO(), &s3.PutObjectInput{
-		Bucket: &bucket,
-		Key:    &s3Key,
-		Body:   file,
+		Bucket:       &bucket,
+		Key:          &s3Key,
+		Body:         file,
+		StorageClass: s3StorageClass, // Use the converted StorageClass type
 	})
 	if err != nil {
 		return fmt.Errorf("failed to upload %s to S3: %w", s3Key, err)
 	}
-	log.Printf("Uploaded %s to S3 as %s\n", localPath, s3Key)
+	log.Printf("Uploaded %s to S3 as %s with storage class %s\n", localPath, s3Key, storageClass)
 	return nil
 }
 
@@ -112,6 +143,7 @@ func main() {
 	region := flag.String("region", "ap-northeast-1", "AWS region (default: ap-northeast-1)")
 	localDirectory := flag.String("local", "", "Local directory to archive (required)")
 	archiveFile := flag.String("archive", "", "Path to archive JSON file (optional)")
+	storageClass := flag.String("storage-class", "GLACIER", "S3 storage class (default: GLACIER)")
 	flag.Parse()
 
 	// Validate required arguments
@@ -202,7 +234,7 @@ func main() {
 		}
 
 		// Upload the file
-		if err := uploader.UploadFile(path, s3Key, *bucketName); err != nil {
+		if err := uploader.UploadFile(path, s3Key, *bucketName, *storageClass); err != nil {
 			return err
 		}
 
