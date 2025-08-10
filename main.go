@@ -235,7 +235,11 @@ func main() {
 
 		// Upload the file
 		if err := uploader.UploadFile(path, s3Key, *bucketName, *storageClass); err != nil {
-			return err
+			if strings.Contains(err.Error(), "EntityTooLarge") {
+				log.Printf("Skipped %s: file too large for S3 PutObject", s3Key)
+				return nil // EntityTooLarge の場合のみスキップ
+			}
+			return err // 他のエラーはそのまま返す
 		}
 
 		// Add the file to the archived list
